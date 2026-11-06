@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>가상 적정 실험실</title>
+<style>
+:root{--bg:#f6f5ff;--card:#fff;--tx:#1f1b3a;--mu:#6b668f;--ac:#6c5ce7;--gr:#e3e0f5;--am:#d97706;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#15132a;--card:#1f1c3a;--tx:#ece9ff;--mu:#a49fcf;--ac:#a99bff;--gr:#34305a;--am:#fbbf24;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#15132a;--card:#1f1c3a;--tx:#ece9ff;--mu:#a49fcf;--ac:#a99bff;--gr:#34305a;--am:#fbbf24;color-scheme:dark}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif;padding:16px}
+.w{max-width:780px;margin:auto}h1{font-size:20px;margin:4px 0 12px}
+.c{background:var(--card);border-radius:12px;padding:14px;margin-bottom:12px}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:4px 16px}
+label{display:block;font-size:13px;margin:8px 0 2px;color:var(--mu)}label b{color:var(--tx)}
+select{width:100%;padding:6px;border-radius:8px;border:1px solid var(--gr);background:var(--bg);color:var(--tx);font-size:14px}
+input[type=range]{width:100%;accent-color:var(--ac)}canvas{width:100%;height:auto;display:block}
+.f{display:flex;gap:14px;align-items:center;flex-wrap:wrap}.f canvas{width:150px;flex:none}.f>div{flex:1;min-width:200px}
+.r{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.r div{background:var(--bg);border-radius:8px;padding:8px;font-size:12px;color:var(--mu)}.r b{display:block;font-size:16px;color:var(--tx)}
+p{font-size:13px;color:var(--mu);margin:8px 0 0;line-height:1.5}.big{font-size:15px;color:var(--tx)}
+.wrap{overflow-x:auto}
+.ex p{color:var(--tx);margin:7px 0}.ex .k{color:var(--ac);font-weight:600}
+</style></head><body><div class="w">
+<h1>🧪 가상 적정 실험실</h1>
+<div class="c"><div class="g">
+<div><label>적정할 물질</label><select id="sub"></select></div>
+<div><label>지시약</label><select id="ind"></select></div>
+<div id="cr" style="display:none"><label>pKa: <b id="cpv"></b></label><input id="cpk" type="range" min="0" max="13" step="0.1" value="5"></div>
+<div><label>시료 농도: <b id="cav"></b> M</label><input id="ca" type="range" min="0.01" max="0.5" step="0.01" value="0.1"></div>
+<div><label>시료 부피: <b id="vav"></b> mL</label><input id="va" type="range" min="10" max="50" step="1" value="25"></div>
+<div><label>적정액 농도: <b id="ctv"></b> M <span id="tn"></span></label><input id="ct" type="range" min="0.05" max="0.5" step="0.01" value="0.1"></div>
+</div></div>
+<div class="c f"><canvas id="fl" width="150" height="170"></canvas><div>
+<label>적정액 넣기: <b id="vv"></b> mL</label><input id="vs" type="range" min="0" max="1000" value="300">
+<div class="r" style="margin-top:10px"><div>현재 pH<b id="ph"></b></div><div>총 부피<b id="tv"></b></div><div>상태<b id="stt" style="font-size:13px"></b></div></div></div></div>
+<div class="c"><div class="wrap"><canvas id="cv" width="720" height="380"></canvas></div>
+<label><input type="checkbox" id="dv" checked> 변화율(dpH/dV) 함께 보기 — 봉우리가 당량점입니다</label></div>
+<div class="c"><div class="wrap"><canvas id="sp" width="720" height="210"></canvas></div><p>화학종 분포: 세로선은 현재 pH입니다. 곡선이 만나는 지점의 pH가 pKa입니다.</p></div>
+<div class="c"><p class="big" id="eq"></p><p id="rec"></p><p>원리: 전하 균형 [H⁺]+[양이온]=[OH⁻]+[음이온]을 각 부피에서 이분법으로 풀어 pH를 구합니다. 다양성자산은 각 단계의 Kₐ를 모두 반영합니다.</p></div>
+<div class="c ex"><b>📐 지금 상황의 계산 과정</b><div id="ex"></div></div>
+</div>
+<script>
+const $=id=>document.getElementById(id),Kw=1e-14,css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const P={hcl:['염산 HCl (강산)','a',[-2]],ace:['아세트산 CH₃COOH','a',[4.76]],fo:['폼산 HCOOH','a',[3.75]],car:['탄산 H₂CO₃ (2가)','a',[6.35,10.33]],pho:['인산 H₃PO₄ (3가)','a',[2.15,7.2,12.35]],cit:['시트르산 (3가)','a',[3.13,4.76,6.4]],cus:['직접 설정 (1가 약산)','a',[5]],
+naoh:['수산화나트륨 NaOH (강염기)','b',[16]],nh3:['암모니아 NH₃ (pKb 4.75)','b',[9.25]],mea:['메틸아민 CH₃NH₂ (pKb 3.36)','b',[10.64]]};
+const IN=[['자동 (추천 지시약)',0,0],['지시약 없음',0,0],['메틸 오렌지',3.1,4.4,'#e5484d','#f5c542'],['메틸 레드',4.4,6.2,'#e5484d','#f5c542'],['브로모티몰 블루',6,7.6,'#f5d442','#3b82f6'],['페놀프탈레인',8.2,10,'#dfe6f2','#ec4899']];
+$('sub').innerHTML='<optgroup label="산 (NaOH로 적정)">'+['hcl','ace','fo','car','pho','cit','cus'].map(k=>`<option value="${k}">${P[k][0]}</option>`).join('')+'</optgroup><optgroup label="염기 (HCl로 적정)">'+['naoh','nh3','mea'].map(k=>`<option value="${k}">${P[k][0]}</option>`).join('')+'</optgroup>';
+$('sub').value='ace';$('ind').innerHTML=IN.map((x,i)=>`<option value="${i}">${x[0]}</option>`).join('');
+let pk,ty,n,va,ca,ct,Ve=[],Vm;
+function alpha(h){const K=pk.map(p=>Math.pow(10,-p));let t=[],pr=1;for(let j=0;j<=n;j++){if(j>0)pr*=K[j-1];t.push(pr*Math.pow(h,n-j))}const D=t.reduce((a,b)=>a+b,0);return t.map(x=>x/D)}
+function pH(v){const V=va+v,C=ca*va/V,T=ct*v/V;let lo=0,hi=14;for(let i=0;i<55;i++){const m=(lo+hi)/2,h=Math.pow(10,-m),a=alpha(h);
+const f=ty=='a'?h+T-Kw/h-C*a.reduce((s,x,j)=>s+j*x,0):h+C*a[0]-Kw/h-T;if(f>0)lo=m;else hi=m}return(lo+hi)/2}
+const SUB=['','','₂','₃'],SUP=['','⁻','²⁻','³⁻'];
+function lab(j){if(ty=='b')return j?'B':'BH⁺';const H=n-j;return(H?'H'+(H>1?SUB[H]:''):'')+'A'+SUP[j]}
+function mix(a,b,t){const p=s=>[1,3,5].map(i=>parseInt(s.substr(i,2),16));const A=p(a),B=p(b);return'rgb('+A.map((x,i)=>Math.round(x+(B[i]-x)*t)).join(',')+')'}
+function rec(ep){let best=1,bd=99;for(let i=2;i<IN.length;i++){const m=(IN[i][1]+IN[i][2])/2,d=ep>=IN[i][1]&&ep<=IN[i][2]?Math.abs(ep-m)-5:Math.abs(ep-m);if(d<bd){bd=d;best=i}}return best}
+function draw(){const id=$('sub').value;pk=[...P[id][2]];if(id=='cus')pk=[+$('cpk').value];ty=P[id][1];n=pk.length;
+$('cr').style.display=id=='cus'?'block':'none';$('cpv').textContent=pk[0].toFixed(1);
+va=+$('va').value;ca=+$('ca').value;ct=+$('ct').value;$('cav').textContent=ca.toFixed(2);$('vav').textContent=va;$('ctv').textContent=ct.toFixed(2);$('tn').textContent=ty=='a'?'(NaOH)':'(HCl)';
+const ne=ty=='a'?n:1;Ve=[];for(let k=1;k<=ne;k++)Ve.push(k*ca*va/ct);Vm=Ve[ne-1]*1.5;
+const v=Vm*$('vs').value/1000,pn=pH(v);$('vv').textContent=v.toFixed(1);$('ph').textContent=pn.toFixed(2);$('tv').textContent=(va+v).toFixed(1)+' mL';
+const eps=Ve.map(x=>pH(x)),last=eps[ne-1];let ii=+$('ind').value;const auto=ii==0;if(auto)ii=rec(last);const I=IN[ii];
+const d=Vm/150,sl=Math.abs(pH(Math.min(v+d,Vm))-pH(Math.max(v-d,0)));
+let s='완만한 구간';if(sl>0.8)s='급변 구간 (당량점 근처)';else if(pk.some(p=>Math.abs(pn-p)<=1)&&v>0)s='완충 영역';else if(v==0)s='적정 전';else if(v>Ve[ne-1]*1.05)s='적정액 과량';
+$('stt').textContent=s;
+// curve
+let c=$('cv'),g=c.getContext('2d'),W=c.width,H=c.height,L=48,B=H-38,T=14,R=W-12;g.clearRect(0,0,W,H);
+const X=q=>L+(R-L)*q/Vm,Y=p=>B-(B-T)*p/14;g.font='13px sans-serif';g.lineWidth=1;
+if(I[1]){const gr=g.createLinearGradient(0,Y(I[2]),0,Y(I[1]));gr.addColorStop(0,I[4]);gr.addColorStop(1,I[3]);g.globalAlpha=.3;g.fillStyle=gr;g.fillRect(L,Y(I[2]),R-L,Y(I[1])-Y(I[2]));g.globalAlpha=1}
+g.strokeStyle=css('--gr');g.fillStyle=css('--mu');for(let p=0;p<=14;p+=2){g.beginPath();g.moveTo(L,Y(p));g.lineTo(R,Y(p));g.stroke();g.fillText(p,L-22,Y(p)+4)}
+for(let i=0;i<=5;i++){const q=Vm*i/5;g.fillText(q.toFixed(0),X(q)-8,B+16)}g.fillText('적정액 부피 (mL)',W/2-50,H-5);g.fillText('pH',6,T+8);
+const N=240,ys=[];for(let i=0;i<=N;i++)ys.push(pH(Vm*i/N));
+if($('dv').checked){const dd=ys.slice(1).map((y,i)=>Math.abs(y-ys[i])),mx=Math.max(...dd);g.strokeStyle=css('--am');g.lineWidth=1.5;g.setLineDash([4,3]);g.beginPath();dd.forEach((y,i)=>{const x=X(Vm*(i+.5)/N),yy=B-(B-T)*.9*y/mx;i?g.lineTo(x,yy):g.moveTo(x,yy)});g.stroke();g.setLineDash([])}
+g.strokeStyle=css('--ac');g.lineWidth=3;g.beginPath();ys.forEach((y,i)=>{const x=X(Vm*i/N);i?g.lineTo(x,Y(y)):g.moveTo(x,Y(y))});g.stroke();
+g.fillStyle=css('--ac');Ve.forEach((x,i)=>{g.beginPath();g.arc(X(x),Y(eps[i]),5,0,7);g.fill();g.fillStyle=css('--mu');g.fillText('EP'+(ne>1?i+1:''),X(x)+8,Y(eps[i])+16);g.fillStyle=css('--ac')});
+g.strokeStyle=css('--tx');g.lineWidth=1;g.beginPath();g.moveTo(X(v),T);g.lineTo(X(v),B);g.stroke();g.fillStyle=css('--tx');g.beginPath();g.arc(X(v),Y(pn),6,0,7);g.fill();
+// species
+c=$('sp');g=c.getContext('2d');W=c.width;H=c.height;g.clearRect(0,0,W,H);const L2=48,B2=H-34,T2=12,R2=W-12,X2=p=>L2+(R2-L2)*p/14,Y2=a=>B2-(B2-T2)*a;
+g.strokeStyle=css('--gr');g.fillStyle=css('--mu');g.font='13px sans-serif';g.lineWidth=1;for(let p=0;p<=14;p+=2){g.beginPath();g.moveTo(X2(p),T2);g.lineTo(X2(p),B2);g.stroke();g.fillText(p,X2(p)-4,B2+16)}g.fillText('pH',R2-20,B2+30);
+const col=['#6c5ce7','#ec4899','#10b981','#f59e0b'];
+for(let j=0;j<=n;j++){g.strokeStyle=col[j];g.lineWidth=2.5;g.beginPath();for(let i=0;i<=140;i++){const p=i/10,a=alpha(Math.pow(10,-p))[j];i?g.lineTo(X2(p),Y2(a)):g.moveTo(X2(p),Y2(a))}g.stroke();g.fillStyle=col[j];g.fillRect(L2+10+j*80,T2+2,10,10);g.fillStyle=css('--tx');g.fillText(lab(j),L2+24+j*80,T2+12)}
+g.strokeStyle=css('--tx');g.lineWidth=1;g.beginPath();g.moveTo(X2(pn),T2);g.lineTo(X2(pn),B2);g.stroke();
+// flask
+const f=$('fl').getContext('2d');f.clearRect(0,0,150,170);f.beginPath();f.moveTo(58,10);f.lineTo(92,10);f.lineTo(92,55);f.lineTo(134,140);f.quadraticCurveTo(140,158,120,158);f.lineTo(30,158);f.quadraticCurveTo(10,158,16,140);f.lineTo(58,55);f.closePath();
+f.save();f.clip();const top=125-35*(va+v)/(va+Vm);f.fillStyle=I[1]?mix(I[3],I[4],Math.max(0,Math.min(1,(pn-I[1])/(I[2]-I[1])))):'#9ec5fe';f.globalAlpha=.85;f.fillRect(0,top,150,60);f.restore();
+f.globalAlpha=1;f.strokeStyle=css('--tx');f.lineWidth=2.5;f.stroke();
+// text
+$('eq').textContent='당량점: '+Ve.map((x,i)=>(ne>1?'EP'+(i+1)+' ':'')+x.toFixed(1)+' mL (pH '+eps[i].toFixed(2)+')').join(' · ');
+const w=pk.map(p=>p).filter(p=>p>0&&p<14);let t='추천 지시약: '+IN[rec(last)][0]+' (마지막 당량점 pH '+last.toFixed(1)+')';
+const jp=pH(Ve[ne-1]*1.01)-pH(Ve[ne-1]*.99);if(jp<2)t+=' — 급변 폭이 작아 지시약으로 끝점을 정확히 판단하기 어렵습니다.';
+if(ty=='a'&&n==1&&pk[0]>0)t+=' · 반당량점 pH = pKa = '+pk[0].toFixed(2);$('rec').textContent=t;explain(v,pn)}
+function explain(v,pn){const V=va+v,n0=ca*va,nt=ct*v,ne=Ve.length,lg=Math.log10,F=x=>(x!=0&&Math.abs(x)<.01||Math.abs(x)>=1e4)?x.toExponential(2):(+x.toFixed(3)).toString(),wk=(K,c)=>(-K+Math.sqrt(K*K+4*K*c))/2;
+const ei=Ve.findIndex(x=>Math.abs(v-x)<=x*.015),st=nt<1e-9?'s':ei>=0?'e':v>Ve[ne-1]?'x':'b';let ti,fm,cl,ap;
+if(ty=='a'){const sg=pk[0]<=0&&n==1;
+if(st=='s'){if(sg){ti='적정 전 · 강산 용액';fm='강산은 완전 해리: [H⁺] = C, pH = −log[H⁺]';ap=-lg(ca);cl=['[H⁺] = '+F(ca)+' M → pH = '+F(ap)]}else{const K=Math.pow(10,-pk[0]),x=wk(K,ca);ap=-lg(x);ti='적정 전 · 약산 '+lab(0)+' 용액'+(n>1?' (1단계 해리가 지배적이라 2·3단계는 무시)':'');fm='Kₐ = x² / (C − x), x = [H⁺] (이차방정식으로 풀이)';cl=['Kₐ = 10^(−'+pk[0]+') = '+F(K)+', C = '+F(ca)+' M','x = [H⁺] = '+F(x)+' M → pH = '+F(ap)]}}
+else if(st=='b'){const s=Ve.findIndex(x=>v<x);if(sg){const h=(n0-nt)/V;ap=-lg(h);ti='적정 중 · 강산이 아직 남아 있음';fm='남은 H⁺ 몰수 ÷ 총 부피 = [H⁺]';cl=['('+F(n0)+' − '+F(nt)+') mmol ÷ '+F(V)+' mL = '+F(h)+' M → pH = '+F(ap)]}else{const x=nt-s*n0,a=lab(s),b=lab(s+1);ap=pk[s]+lg(x/(n0-x));ti='적정 중 · 완충 용액 ('+a+' / '+b+')';fm='헨더슨–하셀바흐 식: pH = pKₐ + log([짝염기] / [약산]). 같은 용액 안이라 부피가 약분되어 몰수 비로 계산할 수 있습니다.';cl=[a+' = '+F(n0-x)+' mmol (남은 약산), '+b+' = '+F(x)+' mmol (생성된 짝염기)','pH = '+pk[s]+' + log('+F(x)+' / '+F(n0-x)+') = '+F(ap)]}}
+else if(st=='e'){const e=ei;if(sg){ap=7;ti='당량점 · 강산–강염기 중화';fm='생성된 염(NaCl)은 가수분해하지 않으므로 pH = 7 (25℃)';cl=['[H⁺] = [OH⁻] = 1.0×10⁻⁷ M']}else if(e<ne-1){ap=(pk[e]+pk[e+1])/2;ti=(e+1)+'번째 당량점 · 양쪽성 이온 '+lab(e+1)+'이 주성분';fm='양쪽성 물질은 산·염기로 모두 작용하므로 pH = (pKₐ'+(e+1)+' + pKₐ'+(e+2)+') / 2';cl=['pH = ('+pk[e]+' + '+pk[e+1]+') / 2 = '+F(ap)]}else{const Kb=Kw/Math.pow(10,-pk[ne-1]),c=n0/V,x=wk(Kb,c);ap=14+lg(x);ti='당량점 · 짝염기 '+lab(n)+'만 남아 가수분해';fm=lab(n)+' + H₂O ⇌ '+lab(n-1)+' + OH⁻,  K_b = K_w / Kₐ = x² / (C − x)';cl=['K_b = 10⁻¹⁴ / 10^(−'+pk[ne-1]+') = '+F(Kb)+', C = '+F(n0)+' mmol ÷ '+F(V)+' mL = '+F(c)+' M','x = [OH⁻] = '+F(x)+' M → pOH = '+F(-lg(x))+' → pH = '+F(ap)]}}
+else{const o=(nt-n*n0)/V;ap=14+lg(o);ti='당량점 이후 · 과량 NaOH가 pH를 결정';fm='남은 OH⁻ 몰수 ÷ 총 부피 = [OH⁻], pH = 14 − pOH (약산의 짝염기 기여는 무시)';cl=['('+F(nt)+' − '+n+' × '+F(n0)+') mmol ÷ '+F(V)+' mL = '+F(o)+' M → pH = '+F(ap)]}}
+else{const kc=pk[0],sg=kc>=14;
+if(st=='s'){if(sg){ap=14+lg(ca);ti='적정 전 · 강염기 용액';fm='강염기는 완전 해리: [OH⁻] = C, pH = 14 + log[OH⁻]';cl=['[OH⁻] = '+F(ca)+' M → pH = '+F(ap)]}else{const Kb=Math.pow(10,kc-14),x=wk(Kb,ca);ap=14+lg(x);ti='적정 전 · 약염기 '+lab(1)+' 용액';fm='B + H₂O ⇌ BH⁺ + OH⁻,  K_b = x² / (C − x), x = [OH⁻]';cl=['K_b = '+F(Kb)+' (pK_b = '+(14-kc).toFixed(2)+'), C = '+F(ca)+' M','x = [OH⁻] = '+F(x)+' M → pH = '+F(ap)]}}
+else if(st=='b'){if(sg){const o=(n0-nt)/V;ap=14+lg(o);ti='적정 중 · 강염기가 아직 남아 있음';fm='남은 OH⁻ 몰수 ÷ 총 부피 = [OH⁻], pH = 14 + log[OH⁻]';cl=['('+F(n0)+' − '+F(nt)+') mmol ÷ '+F(V)+' mL = '+F(o)+' M → pH = '+F(ap)]}else{const B=n0-nt;ap=kc+lg(B/nt);ti='적정 중 · 완충 용액 (B / BH⁺)';fm='헨더슨–하셀바흐 식(짝산 기준): pH = pKₐ(BH⁺) + log([B] / [BH⁺]) = 14 − pK_b + log([B] / [BH⁺])';cl=['B = '+F(B)+' mmol (남은 약염기), BH⁺ = '+F(nt)+' mmol (생성된 짝산)','pH = '+kc+' + log('+F(B)+' / '+F(nt)+') = '+F(ap)]}}
+else if(st=='e'){if(sg){ap=7;ti='당량점 · 강염기–강산 중화';fm='생성된 염(NaCl)은 가수분해하지 않으므로 pH = 7 (25℃)';cl=['[H⁺] = [OH⁻] = 1.0×10⁻⁷ M']}else{const K=Math.pow(10,-kc),c=n0/V,x=wk(K,c);ap=-lg(x);ti='당량점 · 짝산 BH⁺만 남아 가수분해';fm='BH⁺ ⇌ B + H⁺,  Kₐ = x² / (C − x), x = [H⁺]';cl=['Kₐ = 10^(−'+kc+') = '+F(K)+', C = '+F(n0)+' mmol ÷ '+F(V)+' mL = '+F(c)+' M','x = [H⁺] = '+F(x)+' M → pH = '+F(ap)]}}
+else{const h=(nt-n0)/V;ap=-lg(h);ti='당량점 이후 · 과량 HCl이 pH를 결정';fm='남은 H⁺ 몰수 ÷ 총 부피 = [H⁺], pH = −log[H⁺]';cl=['('+F(nt)+' − '+F(n0)+') mmol ÷ '+F(V)+' mL = '+F(h)+' M → pH = '+F(ap)]}}
+if(st=='e'&&Math.abs(v-Ve[ei])>1e-6)cl.push('※ 당량점에서 ±1.5% 이내라 당량점 식으로 근사했습니다.');
+let r='손계산 pH ≈ '+ap.toFixed(2)+' · 그래프에 표시된 pH = '+pn.toFixed(2);if(Math.abs(ap-pn)>.3)r+=' — 이 지점은 근사식이 잘 맞지 않습니다. 시뮬레이터는 모든 평형을 동시에 풀기 때문에 차이가 납니다.';
+$('ex').innerHTML='<p>시료 '+F(n0)+' mmol ('+ca+' M × '+va+' mL), 넣은 적정액 '+F(nt)+' mmol ('+ct+' M × '+v.toFixed(1)+' mL), 총 부피 '+F(V)+' mL</p><p><span class="k">① 상황</span> '+ti+'</p><p><span class="k">② 사용하는 식</span> '+fm+'</p><p><span class="k">③ 대입·계산</span> '+cl.join('<br>')+'</p><p><span class="k">④ 결과</span> '+r+'</p>'}
+document.querySelectorAll('select,input').forEach(e=>e.oninput=draw);draw();
+</script></body></html>
